@@ -24,9 +24,10 @@ if (len(sys.argv) < 3):
 
 fn = sys.argv[1]
 
-reindexlog = open(fn, 'a')
 
 relog = os.environ.get('RELOG', False)
+if relog:
+    reindexlog = open(fn, 'a')
 
 def query_elastic(es, wsid):
     q={"query": {"match": {"access_group": wsid}}}

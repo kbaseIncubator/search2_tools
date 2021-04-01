@@ -5,6 +5,11 @@ import json
 import sys
 import os
 
+
+if len(sys.argv) < 2:
+    print("Usage: reindex.py [-n] [-f] <log file>")
+    sys.exit(1)
+
 fn = sys.argv[-1]
 
 
