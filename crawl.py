@@ -1,4 +1,4 @@
-#!/opt/anaconda3/bin/python
+#!/usr/bin/env python
 
 
 from kbase_workspace_client import WorkspaceClient
@@ -10,13 +10,10 @@ from elasticsearch import Elasticsearch
 from yaml import load
 from yaml import CLoader as Loader
 
-# TODO: Make this configurable
-kbase_endpoint = 'https://kbase.us/services/ws'
+kbase_endpoint = os.environ.get('WS_URL', 'https://kbase.us/services/ws')
 ws_token = os.environ['KB_ADMIN_TOKEN']
-# TODO: Make this configurable
-es_url = 'es01:9200'
-# TODO: Make this configurable
-es_ns = 'search2prod.default_search'
+es_url = os.environ.get('ELASTIC_URL', 'es01:9200')
+es_ns = os.environ.get('ELASTIC_BASE', 'search2prod.default_search')
 
 if (len(sys.argv) < 3):
     print("Usage: ./crawl.py <log file> <start> [<stop>]")
@@ -24,6 +21,9 @@ if (len(sys.argv) < 3):
 
 fn = sys.argv[1]
 
+skip_nonnarrative = True
+if "NON_NARRATIVE" in os.environ:
+    skip_nonnarrative = False
 
 relog = os.environ.get('RELOG', False)
 if relog:
@@ -31,9 +31,9 @@ if relog:
 
 def query_elastic(es, wsid):
     q={"query": {"match": {"access_group": wsid}}}
-    obj_list = []
+    obj_list = dict()
     for d in scan(es, query=q, index=es_ns):
-        obj_list.append(d['_source']['obj_id'])
+        obj_list[d['_source']['obj_id']]=d['_source']['version']
     return obj_list
 
 
@@ -43,6 +43,9 @@ def compare_ws(ws_client, es, wsid, excl_lst):
        wsi = ws_client.admin_req( 'getWorkspaceInfo', { 'id': wsid})
        infos = ws_client.generate_obj_infos(wsid, admin=True)
     except WorkspaceResponseError as ex:
+       if 'Token validation' in str(ex):
+            print("Bad admin token")
+            sys.exit(1)
        return
 
     # [70002,
@@ -58,7 +61,7 @@ def compare_ws(ws_client, es, wsid, excl_lst):
     ws_meta = wsi[8]
     if ('is_temporary' in ws_meta ) and ws_meta['is_temporary']=='true':
         return
-    if 'narrative' not in ws_meta:
+    if 'narrative' not in ws_meta and skip_nonnarrative:
         sys.stderr.write("# Skipping %d since it isn't a narrative\n" % (wsid))
         return
 
@@ -70,11 +73,14 @@ def compare_ws(ws_client, es, wsid, excl_lst):
             if ws_type in excl_lst:
                 continue
             obj_id = i[0]
+            vers = i[4]
             if obj_id not in ela:
                 print("Missing %s/%d %s" % (wsid, obj_id, ws_type))
                 bad = True
                 if relog:
                     reindexlog.write('%d/%d\t%s\n' % (wsid, obj_id, ws_type))
+            elif vers != ela[int(obj_id)]:
+                print("Wrong version %s/%d %s" % (wsid, obj_id, ws_type))
             ct += 1
     except WorkspaceResponseError:
        return
@@ -95,3 +101,5 @@ if __name__ == '__main__':
          if (wsid % 100) == 0:
              sys.stderr.write("# Checking %d\n" % (wsid))
          compare_ws(ws_client, es, wsid, excl_lst)
+         if relog:
+              reindexlog.flush()

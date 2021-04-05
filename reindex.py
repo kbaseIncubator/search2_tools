@@ -1,10 +1,12 @@
-#!/opt/anaconda3/bin/python
+#!/usr/bin/env python
 
 from confluent_kafka import Producer
 import json
 import sys
 import os
 
+boostrap = os.environ.get('KAFKA_HOST', 'kafka01')
+admin_topic = os.environ.get('ADMIN_TOPIC', 'prodbackadmin')
 
 if len(sys.argv) < 2:
     print("Usage: reindex.py [-n] [-f] <log file>")
@@ -30,12 +32,10 @@ def _write_ckpt(ct, fn):
    with open(fn, 'w') as f:
        f.write('%d\n' % (ct))
 
-admin_topic='prodbackadmin'
 
-producer = Producer({'bootstrap.servers': 'kafka01'})
+producer = Producer({'bootstrap.servers': boostrap})
 
 ct = 0
-#evtype = 'REINDEX'
 evtype = 'INDEX_NONEXISTENT'
 
 
